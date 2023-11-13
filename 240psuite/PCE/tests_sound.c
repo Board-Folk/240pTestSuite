@@ -903,9 +903,10 @@ void RefreshHardwareTests()
 
 	drawmenutext(0, "Controller Test");
 	drawmenutext(1, "Memory Viewer");
+	drawmenutext(2, "IFU/CD Tests");
 	
 	row = 22;
-	DrawMenuBottom(2, 0);
+	DrawMenuBottom(3, 0);
 }
 
 void HardwareTests()
@@ -958,7 +959,7 @@ void HardwareTests()
 		if (controller & JOY_DOWN) 
 		{
 			sel++;
-			if(sel > 4)
+			if(sel > 5)
 				sel = 0;
 			refresh = 1;
 		}
@@ -967,7 +968,7 @@ void HardwareTests()
 		{
 			sel--;
 			if(sel < 0)
-				sel = 4;
+				sel = 5;
 			refresh = 1;
 		}
 		
@@ -1005,20 +1006,23 @@ void HardwareTests()
 				case 1:
 					MemViewer(0x2000);
 					break;
-				case 2:
+        case 2:
+          IFUTests();
+          break;
+				case 3:
 #ifdef SYSCARD1
 					x_g = OPTIONS_HW_HELP;
 #endif
 					Options();
 					break;
-				case 3:
+				case 4:
 					showHelp(GENERAL_HW_HELP);
 					break;
-				case 4:
+				case 5:
 					end = 1;
 					break;
 			}
-			if(sel != 4)
+			if(sel != 5)
 				end = 0;
 				
 			redraw = 1;	

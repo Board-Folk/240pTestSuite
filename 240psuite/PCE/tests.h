@@ -30,6 +30,7 @@ void VScrollTest();
 void SoundTest();
 void AudioSyncTest();
 void ReflexTest();
+void IFUTests();
 void DrawPhase();
 void DrawDisappearLogo();
 
