@@ -71,14 +71,14 @@ const char ram_test_values[RAM_TEST_VALUES] = {
   0xFF
 };
 
-int  bram_size = -1;
-int  bram_free = 0;
-int  full_test = 0;
-int  full_test_pass = 0;
-int  full_offset = 0;
-char full_wrote = 0;
-char full_read = 0;
-char full_temp = 0;
+static int  bram_size = 0;
+static int  bram_free = 0;
+static int  full_test = 0;
+static int  full_test_pass = 0;
+static int  full_offset = 0;
+static char full_wrote = 0;
+static char full_read = 0;
+static char full_temp = 0;
 
 int BackupRAMFullTest()
 {
@@ -88,6 +88,9 @@ int BackupRAMFullTest()
     // Backup RAM not detected, but assume 2K and allow to test.
     bram_size = 2048;
   }
+
+  set_font_pal(FONT_GREEN);
+  put_string("$0010", 17, 16);
 
   // Skip header to avoid subsequent odd size/free reports.
   for( full_offset = 0x10 ; full_offset < bram_size ; full_offset++ ) {
@@ -103,6 +106,11 @@ int BackupRAMFullTest()
 
       if (full_read != full_wrote) {
         return 0;
+      }
+
+      if ( full_offset % 99 == 0 ) {
+         vsync();
+         put_hex(full_offset, 4, 18, 16);
       }
     }
   }
@@ -146,7 +154,7 @@ void BackupRAMTest()
       SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
 
       set_font_pal(FONT_GREEN);
-      put_string("IFU: Backup RAM", 12, 7);
+      put_string("IFU Backup RAM", 13, 7);
 
       set_font_pal(FONT_WHITE);
       put_string("Detected:", 12, 10);
@@ -213,7 +221,8 @@ void BackupRAMTest()
 
     if ( controller & JOY_RUN ) {
       set_font_pal(FONT_WHITE);
-      put_string(" Running Full BRAM test...", 6, 14);
+      put_string(" Running full BRAM test...", 6, 14);
+      put_string("                          ", 6, 16);
 
       full_test = 1;
       full_test_pass = BackupRAMFullTest();
