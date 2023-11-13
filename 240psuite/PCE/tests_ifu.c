@@ -202,7 +202,7 @@ void BackupRAMTest()
 
           if( full_read == full_temp ) {
             set_font_pal(FONT_RED);
-            put_string("BRAM unlock error?", 11, 19)
+            put_string("BRAM unlock error?", 11, 19);
           }
         }
       }
@@ -240,7 +240,7 @@ void BackupRAMTest()
 void IFURegisterTest()
 {
   int i = 0;
-  char row = 0;
+  char y = 0;
   char *addr;
   redraw = 1;
 
@@ -267,14 +267,14 @@ void IFURegisterTest()
 
       set_font_pal(FONT_WHITE);
       for (i = 0 ; i < IFU_REGS ; i++ ) {
-        row = i+8;
-        put_string("$", 4, row);
-        put_hex(IFU_REG_MSB, 2, 5, row);
-        put_hex(i, 2, 7, row);
-        put_string(ifu_reg_names[i], 10, row);
+        y = i+8;
+        put_string("$", 4, y);
+        put_hex(IFU_REG_MSB, 2, 5, y);
+        put_hex(i, 2, 7, y);
+        put_string(ifu_reg_names[i], 10, y);
 
         addr = (IFU_REG_MSB << 8) | (i & 0xff);
-        put_hex(*addr, 2, 34, row);
+        put_hex(*addr, 2, 34, y);
       }
     }
 
