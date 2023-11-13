@@ -71,21 +71,61 @@ const char ram_test_values[RAM_TEST_VALUES] = {
   0xFF
 };
 
+int  bram_size = -1;
+int  bram_free = 0;
+int  full_test = 0;
+int  full_test_pass = 0;
+int  full_offset = 0;
+char full_wrote = 0;
+char full_read = 0;
+char full_temp = 0;
+
+int BackupRAMFullTest()
+{
+  int i;
+
+  if( bram_size <= 0 ) {
+    // Backup RAM not detected, but assume 2K and allow to test.
+    bram_size = 2048;
+  }
+
+  // Skip header to avoid subsequent odd size/free reports.
+  for( full_offset = 0x10 ; full_offset < bram_size ; full_offset++ ) {
+    for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
+      full_temp = bm_rawread(full_offset);
+
+      full_wrote = ram_test_values[i];
+      bm_rawwrite(full_offset, full_wrote);
+      full_read = bm_rawread(full_offset);
+
+      // Restore "original" contents (assuming correctly read...)
+      bm_rawwrite(full_offset, full_temp);
+
+      if (full_read != full_wrote) {
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
 
 void BackupRAMTest()
 {
   int  i = 0;
-  char *addr;
-  int  bram_size = -1;
-  int  bram_free = 0;
-  int  full_test = 0;
-  int  full_test_pass = 0;
-  int  full_offset = 0;
-  char full_wrote = 0;
-  char full_read = 0;
-  char full_temp = 0;
+
+  bram_size = -1;
+  bram_free = 0;
+  full_test = 0;
+  full_test_pass = 0;
+  full_offset = 0;
+  full_wrote = 0;
+  full_read = 0;
+  full_temp = 0;
 
   redraw = 1;
+
+  bm_format();
 
   while(!end)
   {
@@ -110,6 +150,7 @@ void BackupRAMTest()
 
       set_font_pal(FONT_WHITE);
       put_string("Detected:", 12, 10);
+
       if ( bm_check() ) {
         bram_size = bm_size();
         bram_free = bm_free();
@@ -171,35 +212,11 @@ void BackupRAMTest()
     controller = joytrg(0);
 
     if ( controller & JOY_RUN ) {
+      set_font_pal(FONT_WHITE);
+      put_string(" Running Full BRAM test...", 6, 14);
+
       full_test = 1;
-      full_test_pass = 1;
-
-      if( bram_size < 0 ) {
-        // Backup RAM not detected, but assume 2K and allow to test.
-        bram_size = 2048;
-      }
-
-      for( full_offset = 0 ; full_offset < bram_size ; full_offset++ ) {
-        for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
-          full_temp = bm_rawread(full_offset);
-
-          full_wrote = ram_test_values[i];
-          bm_rawwrite(full_offset, full_wrote);
-          full_read = bm_rawread(full_offset);
-
-          // Restore "original" contents (assuming correctly read...)
-          bm_rawwrite(full_offset, full_temp);
-
-          if (full_read != full_wrote) {
-            bm_disable(); // Insurance?
-            full_test_pass = 0;
-            break;
-          }
-        }
-        if( full_test_pass == 0 ) {
-          break;
-        }
-      }
+      full_test_pass = BackupRAMFullTest();
 
       redraw = 1;
     }
