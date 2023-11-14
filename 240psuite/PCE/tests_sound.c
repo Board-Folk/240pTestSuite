@@ -1006,9 +1006,9 @@ void HardwareTests()
 				case 1:
 					MemViewer(0x2000);
 					break;
-        case 2:
-          IFUTests();
-          break;
+        		case 2:
+          			IFUTests();
+          			break;
 				case 3:
 #ifdef SYSCARD1
 					x_g = OPTIONS_HW_HELP;
@@ -1377,3 +1377,5 @@ void CDDAPlayer()
 	}
 }
 #endif
+
+#include "tests_ifu.c"

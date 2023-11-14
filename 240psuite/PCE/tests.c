@@ -644,7 +644,3 @@ void HardwareTests()
 }
 
 #endif
-
-#ifndef SYSCARD1
-#include "tests_ifu.c"
-#endif
