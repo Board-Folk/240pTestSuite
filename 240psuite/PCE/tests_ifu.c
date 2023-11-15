@@ -106,9 +106,10 @@ int BackupRAMFullTest()
   }
 
   set_font_pal(FONT_GREEN);
-  put_string("$      ", 24, 14);
+  put_string("$      ", 24, 16);
 
   // Skip header to avoid subsequent odd size/free reports.
+  // (Setting to zero is a good way to simulate a failure.)
   for( bram_full_offset = 0x10 ; bram_full_offset < bram_size ; bram_full_offset++ ) {
     for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
       bram_full_temp = bm_rawread(bram_full_offset);
@@ -126,7 +127,7 @@ int BackupRAMFullTest()
 
       if ( bram_full_offset % 99 == 0x10 ) {
          vsync();
-         put_hex(bram_full_offset, 4, 25, 14);
+         put_hex(bram_full_offset, 4, 25, 16);
       }
     }
   }
@@ -160,7 +161,10 @@ void BackupRAMTestRefresh() {
     put_string("Free:", 15, 12);
     put_number(bram_free, 8, 20, 12);
 
-    put_string("Full test:", 10, 14);
+    put_string("Full test:", 10, 16);
+
+    set_font_pal(FONT_RED);
+    put_string("Full test may destroy contents!", 4, 14);
   }
   else {
     set_font_pal(FONT_RED);
@@ -170,34 +174,31 @@ void BackupRAMTestRefresh() {
   if( bram_full_test ) {
     if ( bram_full_test_pass ) {
       set_font_pal(FONT_GREEN);
-      put_string("PASS", 24, 14);
+      put_string("PASS", 24, 16);
     }
     else {    
       set_font_pal(FONT_RED);
-      put_string("FAIL", 24, 14);
+      put_string("FAIL", 24, 16);
 
       set_font_pal(FONT_GREY);
-      put_string("At offset: $xxxx", 12, 16);
-      put_string("Wrote: $xx  Read: $xx", 9, 17);
-      put_string("Original value: $xx", 10, 18);
-      put_hex(bram_full_offset, 4, 24, 16);
-      put_hex(bram_full_wrote,  2, 17, 17);
-      put_hex(bram_full_read,   2, 28, 17);
-      put_hex(bram_full_temp,   2, 27, 18);
+      put_string("At offset: $xxxx", 12, 18);
+      put_string("Wrote: $xx  Read: $xx", 9, 19);
+      put_string("Original value: $xx", 10, 20);
+      put_hex(bram_full_offset, 4, 24, 18);
+      put_hex(bram_full_wrote,  2, 17, 19);
+      put_hex(bram_full_read,   2, 28, 19);
+      put_hex(bram_full_temp,   2, 27, 20);
 
       if( bram_full_read == bram_full_temp ) {
         set_font_pal(FONT_RED);
-        put_string("Unlock error?", 13, 19);
+        put_string("Unlock error?", 13, 22);
       }
     }
   }      
   else {
     set_font_pal(FONT_WHITE);
-    put_string("Hit RUN", 24, 14);
-  }
-  
-  set_font_pal(FONT_RED);
-  put_string("Full test may destroy contents!", 4, 24);
+    put_string("Hit RUN", 24, 16);
+  }  
 }
 
 void BackupRAMTest()
