@@ -47,6 +47,9 @@ const char *ifu_reg_names[IFU_REGS] = {
 };
 */
 
+const char *str_backup_ram    = "Backup RAM";
+const char *str_ifu_registers = "IFU Registers";
+
 #define RAM_TEST_VALUES 4
 const char ram_test_values[RAM_TEST_VALUES] = {
   0x00,
@@ -74,7 +77,7 @@ int BackupRAMFullTest()
   }
 
   set_font_pal(FONT_GREEN);
-  put_string("$0010", 17, 16);
+  put_string("$      ", 24, 14);
 
   // Skip header to avoid subsequent odd size/free reports.
   for( bram_full_offset = 0x10 ; bram_full_offset < bram_size ; bram_full_offset++ ) {
@@ -92,9 +95,9 @@ int BackupRAMFullTest()
         return 0;
       }
 
-      if ( bram_full_offset % 99 == 0 ) {
+      if ( bram_full_offset % 99 == 0x10 ) {
          vsync();
-         put_hex(bram_full_offset, 4, 18, 16);
+         put_hex(bram_full_offset, 4, 25, 14);
       }
     }
   }
@@ -109,42 +112,40 @@ void BackupRAMTestRefresh() {
       SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
 
       set_font_pal(FONT_GREEN);
-      put_string("IFU Backup RAM", 13, 7);
+      put_string(str_backup_ram, 15, 7);
 
       set_font_pal(FONT_WHITE);
-      put_string("Detected:", 12, 10);
+      put_string("Detected:", 10, 10);
 
       if ( bm_check() ) {
         bram_size = bm_size();
         bram_free = bm_free();
 
         set_font_pal(FONT_GREEN);
-        put_string("YES", 25, 10);
+        put_string("YES", 24, 10);
 
         set_font_pal(FONT_WHITE);
-        put_string("Total Bytes:", 9, 11);
-        put_number(bram_size, 8, 21, 11);
+        put_string("Total:", 13, 11);
+        put_number(bram_size, 8, 20, 11);
 
-        put_string("Bytes Free:", 10, 12);
-        put_number(bram_free, 8, 21, 12);
+        put_string("Free:", 14, 12);
+        put_number(bram_free, 8, 20, 12);
+
+        put_string("Full test:", 9, 14);
       }
       else {
         set_font_pal(FONT_RED);
-        put_string("NO", 25, 10);
+        put_string("NO", 24, 10);
       }
 
       if( bram_full_test ) {
-        set_font_pal(FONT_WHITE);
-        put_string("Full BRAM test:", 6, 14);
-        put_string("Press RUN to test again", 8, 22);
-
         if ( bram_full_test_pass ) {
           set_font_pal(FONT_GREEN);
-          put_string("PASSED", 25, 14);
+          put_string("PASS", 24, 14);
         }
         else {    
           set_font_pal(FONT_RED);
-          put_string("FAILED", 25, 14);
+          put_string("FAIL", 24, 14);
 
           set_font_pal(FONT_GREY);
           put_string("At offset: $xxxx", 12, 16);
@@ -157,19 +158,17 @@ void BackupRAMTestRefresh() {
 
           if( bram_full_read == bram_full_temp ) {
             set_font_pal(FONT_RED);
-            put_string("BRAM unlock error?", 11, 19);
+            put_string("Unlock error?", 13, 19);
           }
         }
       }      
       else {
         set_font_pal(FONT_WHITE);
-        put_string("Press RUN for full test", 8, 14);
-        set_font_pal(FONT_RED);
-        put_string("Contents may be destroyed!", 6, 16);
+        put_string("Hit RUN", 24, 14);
       }
       
-      set_font_pal(FONT_WHITE);
-      put_string("Press II to exit", 11, 24);
+      set_font_pal(FONT_RED);
+      put_string("Full test may destroy contents!", 4, 24);
 }
 
 void BackupRAMTest()
@@ -208,10 +207,6 @@ void BackupRAMTest()
     controller = joytrg(0);
 
     if ( controller & JOY_RUN ) {
-      set_font_pal(FONT_WHITE);
-      put_string(" Running full BRAM test...", 6, 14);
-      put_string("                          ", 6, 16);
-
       bram_full_test = 1;
       bram_full_test_pass = BackupRAMFullTest();
 
@@ -250,7 +245,7 @@ void IFURegisterTest()
       SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
 
       set_font_pal(FONT_GREEN);
-      put_string("IFU Registers", 13, 6);
+      put_string(str_ifu_registers, 13, 6);
 
 
 
@@ -281,9 +276,9 @@ void RefreshIFUTests()
 
   row = 14;
 
-  drawmenutext(0, "IFU Registers");
+  drawmenutext(0, str_ifu_registers);
   drawmenutext(1, "CD System RAM");
-  drawmenutext(2, "Backup RAM");
+  drawmenutext(2, str_backup_ram);
   drawmenutext(3, "ADPCM");
 }
 
