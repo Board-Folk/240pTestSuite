@@ -27,7 +27,7 @@
 #define IFU_REG_MSB 0x18
 
 #define IFU_REGS 15
-
+/*
 const char *ifu_reg_names[IFU_REGS] = {
   "CDC Status",
   "CDC Command",
@@ -45,7 +45,7 @@ const char *ifu_reg_names[IFU_REGS] = {
   "ADPCM Addr Control",
   "Audio Fade Timer"
 };
-
+*/
 const char *str_adpcm         = "ADPCM";
 const char *str_backup_ram    = "Backup RAM";
 const char *str_ifu_registers = "IFU Registers";
@@ -252,8 +252,14 @@ void IFURegisterTest()
 {
   int i = 0;
   char y = 0;
-  char *addr;
+  char *addr = 0;
+  char write_nibble = 0;
+  char write_val = 0;
+
   redraw = 1;
+  sel = 0;
+  addr = (IFU_REG_MSB << 8) | (sel & 0xff);
+  write_val = *addr;
 
   while(!end)
   {
@@ -276,20 +282,98 @@ void IFURegisterTest()
       set_font_pal(FONT_GREEN);
       put_string(str_ifu_registers, 13, 6);
 
-      set_font_pal(FONT_WHITE);
       for (i = 0 ; i < IFU_REGS ; i++ ) {
-        y = i+8;
-        put_string("$", 4, y);
-        put_hex(IFU_REG_MSB, 2, 5, y);
-        put_hex(i, 2, 7, y);
-        put_string(ifu_reg_names[i], 10, y);
-
+        y = i+7;
         addr = (IFU_REG_MSB << 8) | (i & 0xff);
-        put_hex(*addr, 2, 34, y);
+
+        if( i == sel ) {
+          set_font_pal(FONT_RED);
+          put_string(">   <", 31, y)
+          set_font_pal(FONT_GREY);
+          put_string("$", 32, y);
+
+          if( write_nibble == 0 ) {
+            set_font_pal(FONT_GREY);
+          }
+          else {
+            set_font_pal(FONT_WHITE);
+          }
+          put_hex((write_val & 0xf0) >> 4, 1, 33, y);
+
+          if( write_nibble == 1 ) {
+            set_font_pal(FONT_GREY);
+          }
+          else {
+            set_font_pal(FONT_WHITE);
+          }
+          put_hex(write_val & 0x0f, 1, 34, y);
+
+          set_font_pal(FONT_WHITE);
+        }
+        else {
+          set_font_pal(FONT_GREY);
+          put_string(" $   ", 31, y);
+          put_hex(*addr, 2, 33, y);
+        }
+
+        put_string("$", 5, y);
+        put_hex(IFU_REG_MSB, 2, 6, y);
+        put_hex(i, 2, 8, y);
+        //put_string(ifu_reg_names[i], 11, y);
       }
     }
 
-    if( joytrg(0) != 0 ) {
+    set_font_pal(FONT_WHITE);
+    put_string("UP/DOWN:Select  L/R:Edit value", 5, 23);
+    put_string("SEL:Nibble I:Write RUN:Refresh", 5, 24);
+
+    controller = joytrg(0);
+    if( controller & JOY_RUN ) {
+      redraw = 1;
+    }
+    else if( controller & JOY_UP ) {
+      sel--;
+      if ( sel <0 ) sel = IFU_REGS-1;
+      addr = (IFU_REG_MSB << 8) | (sel & 0xff);
+      write_val = *addr;
+      refresh = 1;
+    }
+    else if( controller & JOY_DOWN ) {
+      sel++;
+      if ( sel >= IFU_REGS ) sel = 0;
+      addr = (IFU_REG_MSB << 8) | (sel & 0xff);
+      write_val = *addr;
+      refresh = 1;
+    }
+    else if( controller & JOY_LEFT ) {
+      if( write_nibble == 0 ) {
+        write_val--;
+      }
+      else {
+        write_val -= 0x10;
+      }
+      refresh = 1;
+    }
+    else if( controller & JOY_RIGHT ) {
+      if( write_nibble == 0 ) {
+        write_val++;
+      }
+      else {
+        write_val += 0x10;
+      }
+      refresh = 1;
+    }
+    else if( controller & JOY_SEL ) {
+      write_nibble++;
+      write_nibble %= 2;
+      refresh = 1;
+    }
+    else if( controller & JOY_I ) {
+      addr = (IFU_REG_MSB << 8) | (i & 0xff);
+      poke(addr, write_val);
+      redraw = 1;
+    }
+    else if( controller & JOY_II ) {
       end = 1;
     }
   }
