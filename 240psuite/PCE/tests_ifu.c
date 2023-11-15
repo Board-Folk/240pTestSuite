@@ -27,7 +27,7 @@
 #define IFU_REG_MSB 0x18
 
 #define IFU_REGS 15
-/*
+
 const char *ifu_reg_names[IFU_REGS] = {
   "CDC Status",
   "CDC Command",
@@ -45,8 +45,8 @@ const char *ifu_reg_names[IFU_REGS] = {
   "ADPCM Addr Control",
   "Audio Fade Timer"
 };
-*/
 
+const char *str_adpcm         = "ADPCM";
 const char *str_backup_ram    = "Backup RAM";
 const char *str_ifu_registers = "IFU Registers";
 
@@ -66,6 +66,35 @@ static int  bram_full_offset = 0;
 static char bram_full_wrote = 0;
 static char bram_full_read = 0;
 static char bram_full_temp = 0;
+
+
+void ADPCMTest()
+{
+  int offset = 0;
+  int i = 0;
+  char val_read = 0;
+
+  vsync();
+
+  RedrawBG();
+  disp_sync_on();
+
+  set_font_pal(FONT_GREEN);
+  put_string(str_adpcm, 18, 6);
+
+  set_font_pal(FONT_WHITE);
+  put_string("Testing...", 16, 10);
+
+  put_string("$0000", 18, 14);
+
+  for( offset = 0 ; offset < 256 ; offset++ ) {
+    for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
+      //ad_write(offset, 0, i, 1);
+    }
+  }
+
+  while( joytrg(0) == 0 );
+}
 
 int BackupRAMFullTest()
 {
@@ -106,69 +135,69 @@ int BackupRAMFullTest()
 }
 
 void BackupRAMTestRefresh() {
-      SetFontColors(FONT_WHITE, RGB(3, 3, 3), RGB(7, 7, 7), 0);
-      SetFontColors(FONT_RED,   RGB(3, 3, 3), RGB(7, 0, 0), 0);
-      SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
-      SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
+  SetFontColors(FONT_WHITE, RGB(3, 3, 3), RGB(7, 7, 7), 0);
+  SetFontColors(FONT_RED,   RGB(3, 3, 3), RGB(7, 0, 0), 0);
+  SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
+  SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
 
+  set_font_pal(FONT_GREEN);
+  put_string(str_backup_ram, 15, 7);
+
+  set_font_pal(FONT_WHITE);
+  put_string("Detected:", 11, 10);
+
+  if ( bm_check() ) {
+    bram_size = bm_size();
+    bram_free = bm_free();
+
+    set_font_pal(FONT_GREEN);
+    put_string("YES", 24, 10);
+
+    set_font_pal(FONT_WHITE);
+    put_string("Total:", 14, 11);
+    put_number(bram_size, 8, 20, 11);
+
+    put_string("Free:", 15, 12);
+    put_number(bram_free, 8, 20, 12);
+
+    put_string("Full test:", 10, 14);
+  }
+  else {
+    set_font_pal(FONT_RED);
+    put_string("NO", 24, 10);
+  }
+
+  if( bram_full_test ) {
+    if ( bram_full_test_pass ) {
       set_font_pal(FONT_GREEN);
-      put_string(str_backup_ram, 15, 7);
-
-      set_font_pal(FONT_WHITE);
-      put_string("Detected:", 10, 10);
-
-      if ( bm_check() ) {
-        bram_size = bm_size();
-        bram_free = bm_free();
-
-        set_font_pal(FONT_GREEN);
-        put_string("YES", 24, 10);
-
-        set_font_pal(FONT_WHITE);
-        put_string("Total:", 13, 11);
-        put_number(bram_size, 8, 20, 11);
-
-        put_string("Free:", 14, 12);
-        put_number(bram_free, 8, 20, 12);
-
-        put_string("Full test:", 9, 14);
-      }
-      else {
-        set_font_pal(FONT_RED);
-        put_string("NO", 24, 10);
-      }
-
-      if( bram_full_test ) {
-        if ( bram_full_test_pass ) {
-          set_font_pal(FONT_GREEN);
-          put_string("PASS", 24, 14);
-        }
-        else {    
-          set_font_pal(FONT_RED);
-          put_string("FAIL", 24, 14);
-
-          set_font_pal(FONT_GREY);
-          put_string("At offset: $xxxx", 12, 16);
-          put_string("Wrote: $xx  Read: $xx", 9, 17);
-          put_string("Original value: $xx", 10, 18);
-          put_hex(bram_full_offset, 4, 24, 16);
-          put_hex(bram_full_wrote,  2, 17, 17);
-          put_hex(bram_full_read,   2, 28, 17);
-          put_hex(bram_full_temp,   2, 27, 18);
-
-          if( bram_full_read == bram_full_temp ) {
-            set_font_pal(FONT_RED);
-            put_string("Unlock error?", 13, 19);
-          }
-        }
-      }      
-      else {
-        set_font_pal(FONT_WHITE);
-        put_string("Hit RUN", 24, 14);
-      }
-      
+      put_string("PASS", 24, 14);
+    }
+    else {    
       set_font_pal(FONT_RED);
-      put_string("Full test may destroy contents!", 4, 24);
+      put_string("FAIL", 24, 14);
+
+      set_font_pal(FONT_GREY);
+      put_string("At offset: $xxxx", 12, 16);
+      put_string("Wrote: $xx  Read: $xx", 9, 17);
+      put_string("Original value: $xx", 10, 18);
+      put_hex(bram_full_offset, 4, 24, 16);
+      put_hex(bram_full_wrote,  2, 17, 17);
+      put_hex(bram_full_read,   2, 28, 17);
+      put_hex(bram_full_temp,   2, 27, 18);
+
+      if( bram_full_read == bram_full_temp ) {
+        set_font_pal(FONT_RED);
+        put_string("Unlock error?", 13, 19);
+      }
+    }
+  }      
+  else {
+    set_font_pal(FONT_WHITE);
+    put_string("Hit RUN", 24, 14);
+  }
+  
+  set_font_pal(FONT_RED);
+  put_string("Full test may destroy contents!", 4, 24);
 }
 
 void BackupRAMTest()
@@ -247,15 +276,13 @@ void IFURegisterTest()
       set_font_pal(FONT_GREEN);
       put_string(str_ifu_registers, 13, 6);
 
-
-
       set_font_pal(FONT_WHITE);
       for (i = 0 ; i < IFU_REGS ; i++ ) {
         y = i+8;
         put_string("$", 4, y);
         put_hex(IFU_REG_MSB, 2, 5, y);
         put_hex(i, 2, 7, y);
-        //put_string(ifu_reg_names[i], 10, y);
+        put_string(ifu_reg_names[i], 10, y);
 
         addr = (IFU_REG_MSB << 8) | (i & 0xff);
         put_hex(*addr, 2, 34, y);
@@ -265,7 +292,6 @@ void IFURegisterTest()
     if( joytrg(0) != 0 ) {
       end = 1;
     }
-
   }
 }
 
@@ -279,7 +305,7 @@ void RefreshIFUTests()
   drawmenutext(0, str_ifu_registers);
   drawmenutext(1, "CD System RAM");
   drawmenutext(2, str_backup_ram);
-  drawmenutext(3, "ADPCM");
+  drawmenutext(3, str_adpcm);
 }
 
 void IFUTests()
@@ -291,7 +317,13 @@ void IFUTests()
   end = 0;
   controller = 0;
 
+  SetFontColors(FONT_WHITE, RGB(3, 3, 3), RGB(7, 7, 7), 0);
+  SetFontColors(FONT_RED,   RGB(3, 3, 3), RGB(7, 0, 0), 0);
+  SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
+  SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
+
   disp_off();
+
   while(!end)
   {
     vsync();
@@ -299,7 +331,6 @@ void IFUTests()
     if(redraw)
     {
       RedrawMain();
-
       refresh = 1;
       redraw = 0;
       disp_sync_on();
@@ -354,7 +385,7 @@ void IFUTests()
           BackupRAMTest();
           break;
         case 3:
-          // ADPCM
+          ADPCMTest();
           break;
         case 4:
           end = 1;
