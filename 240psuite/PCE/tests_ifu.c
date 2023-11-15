@@ -24,7 +24,7 @@
 #define FONT_GREEN 13
 #define FONT_GREY  12
 
-#define IFU_REG_MSB 0x18
+#define IFU_REG_BASE 0x1800
 
 #define IFU_REGS 15
 /*
@@ -258,7 +258,7 @@ void IFURegisterTest()
 
   redraw = 1;
   sel = 0;
-  addr = (IFU_REG_MSB << 8) | (sel & 0xff);
+  addr = IFU_REG_BASE + sel;
   write_val = *addr;
 
   while(!end)
@@ -284,7 +284,6 @@ void IFURegisterTest()
 
       for (i = 0 ; i < IFU_REGS ; i++ ) {
         y = i+7;
-        addr = (IFU_REG_MSB << 8) | (i & 0xff);
 
         if( i == sel ) {
           set_font_pal(FONT_RED);
@@ -313,12 +312,12 @@ void IFURegisterTest()
         else {
           set_font_pal(FONT_GREY);
           put_string(" $   ", 31, y);
-          put_hex(*addr, 2, 33, y);
+          addr = IFU_REG_BASE + i;
+          put_hex(peek(addr), 2, 33, y);
         }
 
         put_string("$", 5, y);
-        put_hex(IFU_REG_MSB, 2, 6, y);
-        put_hex(i, 2, 8, y);
+        put_hex(IFU_REG_BASE + i, 4, 6, y);
         //put_string(ifu_reg_names[i], 11, y);
       }
     }
@@ -334,15 +333,15 @@ void IFURegisterTest()
     else if( controller & JOY_UP ) {
       sel--;
       if ( sel <0 ) sel = IFU_REGS-1;
-      addr = (IFU_REG_MSB << 8) | (sel & 0xff);
-      write_val = *addr;
+      addr = IFU_REG_BASE + sel;
+      write_val = peek(addr);
       refresh = 1;
     }
     else if( controller & JOY_DOWN ) {
       sel++;
       if ( sel >= IFU_REGS ) sel = 0;
-      addr = (IFU_REG_MSB << 8) | (sel & 0xff);
-      write_val = *addr;
+      addr = IFU_REG_BASE + sel;
+      write_val = peek(addr);
       refresh = 1;
     }
     else if( controller & JOY_LEFT ) {
@@ -369,11 +368,12 @@ void IFURegisterTest()
       refresh = 1;
     }
     else if( controller & JOY_I ) {
-      addr = (IFU_REG_MSB << 8) | (i & 0xff);
+      addr = IFU_REG_BASE + sel;
       poke(addr, write_val);
       redraw = 1;
     }
     else if( controller & JOY_II ) {
+      sel = 0;
       end = 1;
     }
   }
