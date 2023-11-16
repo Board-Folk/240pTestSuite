@@ -27,7 +27,7 @@
 #define IFU_REG_BASE 0x1800
 
 #define IFU_REGS 15
-/*
+
 const char *ifu_reg_names[IFU_REGS] = {
   "CDC Status",
   "CDC Command",
@@ -45,7 +45,7 @@ const char *ifu_reg_names[IFU_REGS] = {
   "ADPCM Addr Control",
   "Audio Fade Timer"
 };
-*/
+
 const char *str_adpcm         = "ADPCM";
 const char *str_backup_ram    = "Backup RAM";
 const char *str_ifu_registers = "IFU Registers";
@@ -319,7 +319,7 @@ void IFURegisterTest()
 
         put_string("$", 5, y);
         put_hex(IFU_REG_BASE + i, 4, 6, y);
-        //put_string(ifu_reg_names[i], 11, y);
+        put_string(ifu_reg_names[i], 11, y);
       }
     }
 
