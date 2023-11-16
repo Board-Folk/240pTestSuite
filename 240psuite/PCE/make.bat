@@ -2,7 +2,7 @@
 @set HUC_HOME=C:\Devel\PCE\huc
 
 @path=%path%;%HUC_HOME%\bin
-@set PCE_INCLUDE=%HUC_HOME%/include/pce
+@set PCE_INCLUDE=%HUC_HOME%/include/huc
 
 @REM Compile, assemble, and link
 CALL makeclean.bat
