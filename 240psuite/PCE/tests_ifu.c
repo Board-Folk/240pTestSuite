@@ -49,6 +49,20 @@ const char *ifu_reg_names[IFU_REGS] = {
 const char *str_adpcm         = "ADPCM";
 const char *str_backup_ram    = "Backup RAM";
 const char *str_ifu_registers = "IFU Registers";
+const char *str_work_ram      = "IFU Work RAM";
+const char *str_spaces        = "                                ";
+
+/*
+ * IFU Work RAM is split into 64K "segments" to allow individual testing.
+ */
+#define IFU_WRAM_SEGMENTS 4
+#define IFU_WRAM_SEGMENT_BANKS 8
+const char ifu_wram_segments[IFU_WRAM_SEGMENTS] = {
+  0x80, // Strange order because the standard 64K is actually higher in physical address space.
+  0x68, // Remaining segments cover the additional 192K RAM for Super CD System, Duo, etc.
+  0x70,
+  0x78
+};
 
 #define RAM_TEST_VALUES 4
 const char ram_test_values[RAM_TEST_VALUES] = {
@@ -60,13 +74,25 @@ const char ram_test_values[RAM_TEST_VALUES] = {
 
 static int  bram_size = 0;
 static int  bram_free = 0;
-static int  bram_full_test = 0;
-static int  bram_full_test_pass = 0;
-static int  bram_full_offset = 0;
-static char bram_full_wrote = 0;
-static char bram_full_read = 0;
-static char bram_full_temp = 0;
+static int  ifu_full_test = 0;
+static int  ifu_full_test_pass = 0;
+static int  ifu_full_offset = 0;
+static char ifu_full_wrote = 0;
+static char ifu_full_read = 0;
+static char ifu_full_temp = 0;
 
+/*
+ * Assembly function to set the bank for page 3, the only one we can freely change in huc.
+ * Setting this allows us to access any physical bank via page 3 ($6000-$7FFF).
+ */
+void set_page(char bank);
+#asm
+_set_page:
+  txa        ; argument (bank) is passed in X, transfer it to A
+  tam #3     ; set bank for page 3 to value now in A
+  rts        ; return
+#endasm
+#define PAGE_START 0x6000
 
 void ADPCMTest()
 {
@@ -96,6 +122,8 @@ void ADPCMTest()
   while( joytrg(0) == 0 );
 }
 
+// This could probably be rewritten to use RAMTestRegion.
+// (Locking/unlocking would need to be handled explicitly.)
 int BackupRAMFullTest()
 {
   int i;
@@ -110,24 +138,26 @@ int BackupRAMFullTest()
 
   // Skip header to avoid subsequent odd size/free reports.
   // (Setting to zero is a good way to simulate a failure.)
-  for( bram_full_offset = 0x10 ; bram_full_offset < bram_size ; bram_full_offset++ ) {
+  for( ifu_full_offset = 0x10 ; ifu_full_offset < bram_size ; ifu_full_offset++ ) {
     for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
-      bram_full_temp = bm_rawread(bram_full_offset);
+      ifu_full_temp = bm_rawread(ifu_full_offset);
 
-      bram_full_wrote = ram_test_values[i];
-      bm_rawwrite(bram_full_offset, bram_full_wrote);
-      bram_full_read = bm_rawread(bram_full_offset);
+      ifu_full_wrote = ram_test_values[i];
+      bm_rawwrite(ifu_full_offset, ifu_full_wrote);
+      ifu_full_read = bm_rawread(ifu_full_offset);
 
       // Restore "original" contents (assuming correctly read...)
-      bm_rawwrite(bram_full_offset, bram_full_temp);
+      bm_rawwrite(ifu_full_offset, ifu_full_temp);
 
-      if (bram_full_read != bram_full_wrote) {
+      if (ifu_full_read != ifu_full_wrote) {
         return 0;
       }
 
-      if ( bram_full_offset % 99 == 0x10 ) {
+      // Update progress periodically. Every 99 bytes just gives less boring
+      // feedback than some round number like 0x100, for example.
+      if ( ifu_full_offset % 99 == 0x10 ) {
          vsync();
-         put_hex(bram_full_offset, 4, 25, 16);
+         put_hex(ifu_full_offset, 4, 25, 16);
       }
     }
   }
@@ -171,8 +201,8 @@ void BackupRAMTestRefresh() {
     put_string("NO", 24, 10);
   }
 
-  if( bram_full_test ) {
-    if ( bram_full_test_pass ) {
+  if( ifu_full_test ) {
+    if ( ifu_full_test_pass ) {
       set_font_pal(FONT_GREEN);
       put_string("PASS", 24, 16);
     }
@@ -184,12 +214,12 @@ void BackupRAMTestRefresh() {
       put_string("At offset: $xxxx", 12, 18);
       put_string("Wrote: $xx  Read: $xx", 9, 19);
       put_string("Original value: $xx", 10, 20);
-      put_hex(bram_full_offset, 4, 24, 18);
-      put_hex(bram_full_wrote,  2, 17, 19);
-      put_hex(bram_full_read,   2, 28, 19);
-      put_hex(bram_full_temp,   2, 27, 20);
+      put_hex(ifu_full_offset, 4, 24, 18);
+      put_hex(ifu_full_wrote,  2, 17, 19);
+      put_hex(ifu_full_read,   2, 28, 19);
+      put_hex(ifu_full_temp,   2, 27, 20);
 
-      if( bram_full_read == bram_full_temp ) {
+      if( ifu_full_read == ifu_full_temp || ifu_full_read == 0xff ) {
         set_font_pal(FONT_RED);
         put_string("Unlock error?", 13, 22);
       }
@@ -207,12 +237,12 @@ void BackupRAMTest()
 
   bram_size = -1;
   bram_free = 0;
-  bram_full_test = 0;
-  bram_full_test_pass = 0;
-  bram_full_offset = 0;
-  bram_full_wrote = 0;
-  bram_full_read = 0;
-  bram_full_temp = 0;
+  ifu_full_test = 0;
+  ifu_full_test_pass = 0;
+  ifu_full_offset = 0;
+  ifu_full_wrote = 0;
+  ifu_full_read = 0;
+  ifu_full_temp = 0;
 
   redraw = 1;
 
@@ -231,14 +261,15 @@ void BackupRAMTest()
     
     if(refresh)
     {
+      refresh = 0;
       BackupRAMTestRefresh();
     }
 
     controller = joytrg(0);
 
     if ( controller & JOY_RUN ) {
-      bram_full_test = 1;
-      bram_full_test_pass = BackupRAMFullTest();
+      ifu_full_test = 1;
+      ifu_full_test_pass = BackupRAMFullTest();
 
       redraw = 1;
     }
@@ -275,6 +306,7 @@ void IFURegisterTest()
     }
     if(refresh)
     {
+      refresh = 0;
       SetFontColors(FONT_WHITE, RGB(3, 3, 3), RGB(7, 7, 7), 0);
       SetFontColors(FONT_RED,   RGB(3, 3, 3), RGB(7, 0, 0), 0);
       SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
@@ -288,7 +320,7 @@ void IFURegisterTest()
 
         if( i == sel ) {
           set_font_pal(FONT_RED);
-          put_string(">   <", 31, y)
+          put_string(">   <", 31, y);
           set_font_pal(FONT_GREY);
           put_string("$", 32, y);
 
@@ -388,9 +420,194 @@ void RefreshIFUTests()
   row = 14;
 
   drawmenutext(0, str_ifu_registers);
-  drawmenutext(1, "CD System RAM");
+  drawmenutext(1, str_work_ram);
   drawmenutext(2, str_backup_ram);
   drawmenutext(3, str_adpcm);
+}
+
+// Theoretically non-desctructive Generic memory test.
+// Note that offset and length are not validated!
+int RAMTestRegion(char bank, int offset, int length) {
+  int i, pos = 0;
+  char val,tmp = 0;
+
+  set_page(bank);
+  for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
+    for( ifu_full_offset = offset ; ifu_full_offset < offset + length ; ifu_full_offset++ ) {
+      pos = PAGE_START + ifu_full_offset;
+      ifu_full_temp = peek(pos);
+      poke(pos, i);
+      ifu_full_wrote = i;
+      ifu_full_read = peek(pos);
+      poke(pos, ifu_full_temp);
+
+      if( ifu_full_read != ifu_full_wrote ) {
+        return 0;
+      }
+    }
+  }
+
+  return 1;
+}
+
+void IFUWorkRAMTest()
+{
+  int i = 0;
+  char y = 0;
+  char detected = 0;
+  char test_sub_bank = 0;
+  char test_sub_bank_pass = 0;
+
+  sel = 0;
+  redraw = 1;
+
+
+  while(!end)
+  {
+    vsync();
+
+    if(redraw)
+    {
+      RedrawBG();
+      refresh = 1;
+      redraw = 0;
+      disp_sync_on();
+
+      SetFontColors(FONT_WHITE, RGB(3, 3, 3), RGB(7, 7, 7), 0);
+      SetFontColors(FONT_RED,   RGB(3, 3, 3), RGB(7, 0, 0), 0);
+      SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
+      SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
+
+      for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
+        y = 9 + i;
+        // Quick check/detection: write and read back one byte from start of bank.
+        detected = 0;
+        set_page(ifu_wram_segments[i]);
+        poke(PAGE_START, 0x55);
+        if( peek(PAGE_START) == 0x55 ) detected = 1;
+
+        if ( detected ) {
+          set_font_pal(FONT_GREEN);
+          put_string("Detected", 27, y);
+        }
+        else {
+          set_font_pal(FONT_RED);
+          put_string("Not Found", 27, y);
+        }
+      }
+    }
+
+    if(refresh)
+    {
+      refresh = 0;
+
+      set_font_pal(FONT_GREEN);
+      put_string(str_work_ram, 14, 7);
+
+      set_font_pal(FONT_WHITE);
+      put_string("Standard 64K:", 4, 9);
+      put_string("Extra 192K:", 4, 10);
+
+      for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
+        y = 9 + i;
+
+        if( ifu_full_test && i == sel ) {
+          if( test_sub_bank == 0xff ) {
+            // Test has only been triggered, did not actually start yet.
+            set_font_pal(FONT_WHITE);
+            put_string("Testing..", 27, y);
+
+            // Blank out any previous failure report.
+            put_string(str_spaces, 4, 18);
+            put_string(str_spaces, 4, 19);
+            put_string(str_spaces, 4, 20);
+
+            test_sub_bank = 0;
+          }
+          else {
+            // Full test is running, update counter/result.
+            put_string("         ", 27, y);
+
+            if( test_sub_bank_pass ) {
+              set_font_pal(FONT_GREEN);
+
+              if( test_sub_bank == IFU_WRAM_SEGMENT_BANKS-1 ) {
+                put_string("PASS", 27, y);
+                ifu_full_test = 0;
+              }
+              else {
+                put_string("$", 27, y);
+                put_hex(ifu_wram_segments[i] + test_sub_bank, 2, 28, y);
+
+                test_sub_bank++;
+              }
+            }
+            else {
+              // Test failed, report results.
+              set_font_pal(FONT_RED);
+              put_string("FAIL", 27, y);
+
+              set_font_pal(FONT_GREY);
+              put_string("Bank: $xx  Offset: $xxxx", 8, 18);
+              put_string("Wrote: $xx  Read: $xx", 9, 19);
+              put_string("Original value: $xx", 10, 20);
+              put_hex(ifu_wram_segments[i] + test_sub_bank,  2, 15, 18);
+              put_hex(ifu_full_offset, 4, 28, 18);
+              put_hex(ifu_full_wrote,  2, 17, 19);
+              put_hex(ifu_full_read,   2, 28, 19);
+              put_hex(ifu_full_temp,   2, 27, 20);
+
+              ifu_full_test = 0;
+            }
+          }
+        }
+        else {
+          // No test running, or segment being tested is not selected.
+          if( i == sel ) {
+            set_font_pal(FONT_WHITE);
+          }
+          else {
+            set_font_pal(FONT_GREY);
+          }
+          put_string("$  -$", 18, y);
+          put_hex(ifu_wram_segments[i], 2, 19, y);
+          put_hex(ifu_wram_segments[i] + IFU_WRAM_SEGMENT_BANKS-1, 2, 23, y);
+        }
+      }
+
+      set_font_pal(FONT_WHITE);
+      put_string("UP/DOWN:Select  RUN:Test Banks", 5, 23);
+    }
+
+    if( ifu_full_test ) {
+      test_sub_bank_pass = RAMTestRegion(ifu_wram_segments[sel] + test_sub_bank, 0, 0x2000);
+      refresh = 1;
+    }
+    else {
+      controller = joytrg(0);
+
+      if ( controller & JOY_RUN ) {
+        ifu_full_test = 1;
+        test_sub_bank = 0xff;
+        test_sub_bank_pass = 0;
+        refresh = 1;
+      }
+      else if( controller & JOY_UP ) {
+        sel--;
+        if ( sel <0 ) sel = IFU_WRAM_SEGMENTS-1;
+        refresh = 1;
+      }
+      else if( controller & JOY_DOWN ) {
+        sel++;
+        if ( sel >= IFU_WRAM_SEGMENTS ) sel = 0;
+        refresh = 1;
+      }
+      else if ( controller & JOY_II ) {
+        sel = 1;
+        end = 1;
+      }
+    }
+  }
 }
 
 void IFUTests()
@@ -423,8 +640,8 @@ void IFUTests()
 
     if(refresh)
     {
-      RefreshIFUTests();
       refresh = 0;
+      RefreshIFUTests();
     }
 
     controller = joytrg(0);
@@ -464,7 +681,7 @@ void IFUTests()
           IFURegisterTest();
           break;
         case 1:
-          // CD System RAM
+          IFUWorkRAMTest();
           break;
         case 2:
           BackupRAMTest();
@@ -483,6 +700,9 @@ void IFUTests()
       disp_off();
     }
   }
+
+  set_page(0); // restore default value
+
   end = 0;
   sel = 2;
 }
