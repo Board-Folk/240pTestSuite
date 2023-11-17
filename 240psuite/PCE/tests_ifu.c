@@ -45,8 +45,12 @@ const char *ifu_reg_names[IFU_REGS] = {
   "ADPCM Addr Control",
   "Audio Fade Timer"
 };
+#define IFU_REG_ADPCM_MSB    (IFU_REG_BASE | 0x09)
+#define IFU_REG_ADPCM_LSB    (IFU_REG_BASE | 0x08)
+#define IFU_REG_ADPCM_DATA   (IFU_REG_BASE | 0x0A)
+#define IFU_REG_ADPCM_STATUS (IFU_REG_BASE | 0x0C)
 
-const char *str_adpcm         = "ADPCM";
+const char *str_adpcm_buffer  = "ADPCM Buffer";
 const char *str_backup_ram    = "Backup RAM";
 const char *str_ifu_registers = "IFU Registers";
 const char *str_work_ram      = "IFU Work RAM";
@@ -74,8 +78,8 @@ const char ram_test_values[RAM_TEST_VALUES] = {
 
 static int  bram_size = 0;
 static int  bram_free = 0;
-static int  ifu_full_test = 0;
-static int  ifu_full_test_pass = 0;
+static char ifu_full_test = 0;
+static char ifu_full_test_pass = 0;
 static int  ifu_full_offset = 0;
 static char ifu_full_wrote = 0;
 static char ifu_full_read = 0;
@@ -94,32 +98,220 @@ _set_page:
 #endasm
 #define PAGE_START 0x6000
 
-void ADPCMTest()
-{
-  int offset = 0;
+#define ADPCM_TIMEOUT_FRAMES (2 * 60)
+#define ADPCM_STATUS_BUSY 0x80
+#define ADPCM_PASS    1
+#define ADPCM_FAIL    -1
+#define ADPCM_ABORT   99
+#define ADPCM_TIMEOUT 0
+
+int ADPCMWaitReady() {
   int i = 0;
-  char val_read = 0;
 
-  vsync();
-
-  RedrawBG();
-  disp_sync_on();
-
-  set_font_pal(FONT_GREEN);
-  put_string(str_adpcm, 18, 6);
-
-  set_font_pal(FONT_WHITE);
-  put_string("Testing...", 16, 10);
-
-  put_string("$0000", 18, 14);
-
-  for( offset = 0 ; offset < 256 ; offset++ ) {
-    for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
-      //ad_write(offset, 0, i, 1);
+  do {
+    if( peek(IFU_REG_ADPCM_STATUS) & ADPCM_STATUS_BUSY ) {
+      vsync();
+      i++;
     }
+    else {
+      // Ready
+      return 1;
+    }
+  } while( i < ADPCM_TIMEOUT_FRAMES );
+
+  // Not ready, timeout.
+  return 0;
+}
+
+// Test one 256-byte region of the ADPCM buffer.
+int ADPCMFullTest(char msb) {
+  char lsb = 0;
+
+  if( !ADPCMWaitReady() ) return ADPCM_TIMEOUT;
+  poke(IFU_REG_ADPCM_MSB, msb);
+
+  for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
+    // Pump in 256 bytes.
+    do {
+      // LSB to zero, each write will auto-increment.
+      //if( !ADPCMWaitReady() ) return ADPCM_TIMEOUT;
+      poke(IFU_REG_ADPCM_LSB, 0);
+
+      if( ADPCMWaitReady() ) {
+        poke(IFU_REG_ADPCM_DATA, ifu_full_wrote);
+      }
+      else {
+        // timeout
+        ifu_full_offset = (msb << 8 | lsb);
+        return ADPCM_TIMEOUT;
+      }
+
+      if( joytrg(0) & JOY_SEL ) {
+        ifu_full_offset = (msb << 8 | lsb);
+        return ADPCM_ABORT;
+      }
+
+      lsb++;
+    } while( lsb != 0 );
+
+    // Read 256 bytes back.
+    do {
+      // LSB to zero, each write will auto-increment.
+      //if( !ADPCMWaitReady() ) return ADPCM_TIMEOUT;
+      poke(IFU_REG_ADPCM_LSB, 0);
+
+      if( ADPCMWaitReady() ) {
+        ifu_full_read = peek(IFU_REG_ADPCM_DATA);
+        if( ifu_full_read != ifu_full_wrote ) {
+          ifu_full_offset = (msb << 8 | lsb);
+          return ADPCM_FAIL;
+        }
+      }
+      else {
+        // timeout
+        ifu_full_offset = (msb << 8 | lsb);
+        return ADPCM_TIMEOUT;
+      }
+
+      if( joytrg(0) & JOY_SEL ) {
+        ifu_full_offset = (msb << 8 | lsb);
+        return ADPCM_ABORT;
+      }
+
+      lsb++;
+    } while( lsb != 0 );
   }
 
-  while( joytrg(0) == 0 );
+  return ADPCM_PASS;
+}
+
+// The ADPCM buffer is 2 x 64K x 4 bit DRAM and connected only to the IFU ASIC.
+// It therefore can't be accessed directly, only via manipulation of the
+// appropriate IFU registers. Huc has functions for this but these appear to be
+// wrappers around the BIOS functions which we, effectively being the BIOS at
+// this point, don't have access to here. To avoid copying that code and because
+// performance isn't critical, it's just done in C.
+void ADPCMTest()
+{
+  char msb, lsb = 0;
+  char result = 0;
+  char timeout = 0;
+  char abort = 0;
+
+  end = 0;
+  redraw = 1;
+  ifu_full_test = 0;
+
+  while(!end) {
+
+    if(redraw)
+    {
+      RedrawBG();
+      refresh = 1;
+      redraw = 0;
+      disp_sync_on();
+
+      SetFontColors(FONT_WHITE, RGB(3, 3, 3), RGB(7, 7, 7), 0);
+      SetFontColors(FONT_RED,   RGB(3, 3, 3), RGB(7, 0, 0), 0);
+      SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
+      SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
+
+      set_font_pal(FONT_GREEN);
+      put_string(str_adpcm_buffer, 14, 6);
+
+      if( ifu_full_test ) {
+        put_string(str_spaces, 4, 10);
+
+        set_font_pal(FONT_WHITE);
+        put_string("Testing...", 10, 10);
+        put_string("Hit SEL to cancel", 12, 12);
+
+        set_font_pal(FONT_GREEN);
+        put_string("$00/FF", 24, 10);
+
+        // Run the test.
+        ifu_full_test_pass = 1;
+        timeout = 0;
+        abort = 0;
+        msb = 0;
+
+        // First region test always times out... need to look into this but
+        // for now run a dummy test as a workaround. 
+        ADPCMFullTest(0);
+
+        do {
+          result = ADPCMFullTest(msb);
+          if( result == ADPCM_PASS ) {
+            // Region passed
+            put_hex(msb, 2, 25, 10);
+          }
+          else if( result == ADPCM_FAIL ) {
+            // Region failed
+            ifu_full_test_pass = 0;
+            break;
+          }
+          else if( result == ADPCM_ABORT ) {
+            abort = 1;
+            ifu_full_test_pass = 0;
+            break;
+          }
+          else {
+            timeout = 1;
+            ifu_full_test_pass = 0;
+            break;
+          }
+          msb++;
+        } while( msb != 0 );
+
+        // Report results.
+        put_string(str_spaces, 4, 12);
+        if( timeout ) {
+          set_font_pal(FONT_RED);
+          put_string(str_spaces, 4, 10);
+          put_string("TIMEOUT", 16, 10);
+
+          set_font_pal(FONT_GREY);
+          put_string("At offset: $xxxx", 12, 18);
+          put_hex(ifu_full_offset, 4, 24, 18);
+        }
+        else if( abort ) {
+          set_font_pal(FONT_WHITE);
+          put_string("CANCELLED", 15, 12);
+        }
+        else if( ifu_full_test_pass ) {
+          set_font_pal(FONT_GREEN);
+          put_string(" PASS ", 24, 10);
+        }
+        else {
+          set_font_pal(FONT_RED);
+          put_string(" FAIL ", 24, 10);
+
+          set_font_pal(FONT_GREY);
+          put_string("At offset: $xxxx", 12, 18);
+          put_string("Wrote: $xx  Read: $xx", 9, 19);
+          put_hex(ifu_full_offset, 4, 24, 18);
+          put_hex(ifu_full_wrote,  2, 17, 19);
+          put_hex(ifu_full_read,   2, 28, 19);
+        }
+
+        ifu_full_test = 0;
+      }
+
+      set_font_pal(FONT_WHITE);
+      put_string("Hit RUN to (re)test", 10, 22);
+    }
+
+    controller = joytrg(0);
+
+    if ( controller & JOY_RUN ) {
+      ifu_full_test = 1;
+      redraw = 1;
+    }
+    else if ( controller & JOY_II ) {
+      end = 1;
+    }
+  }
+  end = 0;
 }
 
 // This could probably be rewritten to use RAMTestRegion.
@@ -412,19 +604,6 @@ void IFURegisterTest()
   }
 }
 
-void RefreshIFUTests()
-{
-  set_font_pal(12);
-  put_string("IFU/CD Tests", 14, 6);
-
-  row = 14;
-
-  drawmenutext(0, str_ifu_registers);
-  drawmenutext(1, str_work_ram);
-  drawmenutext(2, str_backup_ram);
-  drawmenutext(3, str_adpcm);
-}
-
 // Theoretically non-desctructive Generic memory test.
 // Note that offset and length are not validated!
 int RAMTestRegion(char bank, int offset, int length) {
@@ -641,7 +820,16 @@ void IFUTests()
     if(refresh)
     {
       refresh = 0;
-      RefreshIFUTests();
+
+      set_font_pal(12);
+      put_string("IFU/CD Tests", 14, 6);
+
+      row = 14;
+
+      drawmenutext(0, str_ifu_registers);
+      drawmenutext(1, str_work_ram);
+      drawmenutext(2, str_backup_ram);
+      drawmenutext(3, str_adpcm_buffer);
     }
 
     controller = joytrg(0);
@@ -652,7 +840,7 @@ void IFUTests()
     if (controller & JOY_DOWN)
     {
       sel++;
-      if(sel > 4)
+      if(sel > 3)
         sel = 0;
       refresh = 1;
     }
@@ -661,7 +849,7 @@ void IFUTests()
     {
       sel--;
       if(sel < 0)
-        sel = 4;
+        sel = 3;
       refresh = 1;
     }
 
