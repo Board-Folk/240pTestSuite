@@ -80,6 +80,7 @@ const char ram_test_values[RAM_TEST_VALUES] = {
   0xFF
 };
 
+static char scd_hucard_ram_detected = 0;
 static int  bram_size = 0;
 static int  bram_free = 0;
 static char ifu_full_test = 0;
@@ -88,9 +89,6 @@ static int  ifu_full_offset = 0;
 static char ifu_full_wrote = 0;
 static char ifu_full_read = 0;
 static char ifu_full_temp = 0;
-static char scd_hucard_ram_detected = 0;
-static char scd_a = 0;
-static char scd_x = 0;
 
 /*
  * Assembly function to set the bank for page 3, the only one we can freely change in huc.
@@ -99,8 +97,10 @@ static char scd_x = 0;
 void set_page(char bank);
 #asm
 _set_page:
+  pha        ; save A
   txa        ; argument (bank) is passed in X, transfer it to A
   tam #3     ; set bank for page 3 to value now in A
+  pla        ; restore A
   rts        ; return
 #endasm
 #define PAGE_START 0x6000
@@ -649,14 +649,14 @@ int RAMTestRegion(char bank, int offset, int length) {
 int SCDRAM_Detect()
 {
   if( peek(0x18C5) == 0xAA && peek(0x18C6) == 0x55 ) {
-    scd_x = peek(0x18c7);
-    scd_a = peek(0xFFF4);
-    return 0;
+    // x = peek(0x18c7);
+    // a = peek(0xFFF4);
+    return 1;
   }
   else {
     if( peek(0x18C1) == 0xAA && peek(0x18C2) == 0x55 ) {
-      scd_x = peek(0x18C3);
-      scd_a = peek(0xFFF4);
+      // x = peek(0x18C3);
+      // a = peek(0xFFF4);
       return 1;
     }
   }
@@ -737,6 +737,7 @@ void IFUWorkRAMTest()
       for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
         y = 11 + i;
 
+        set_page(ifu_wram_segments[i]);
         if ( peek(PAGE_START) == 0x55 ) {
           set_font_pal(FONT_GREEN);
           put_string("Detected", 27, y);
@@ -834,8 +835,10 @@ void IFUWorkRAMTest()
         }
       }
 
-      set_font_pal(FONT_WHITE);
-      put_string("UP/DOWN:Select  RUN:Test Banks", 5, 23);
+      if( !scd_hucard_ram_detected ) {
+        set_font_pal(FONT_WHITE);
+        put_string("UP/DOWN:Select  RUN:Test Banks", 5, 23);
+      }
     }
 
     if( ifu_full_test ) {
@@ -850,9 +853,8 @@ void IFUWorkRAMTest()
           ifu_full_test = 1;
           test_sub_bank = 0xff;
           test_sub_bank_pass = 0;
+          refresh = 1;
         }
-        // Still refresh, for visual feedback.
-        refresh = 1;
       }
       else if( controller & JOY_UP ) {
         sel--;
