@@ -50,10 +50,14 @@ const char *ifu_reg_names[IFU_REGS] = {
 #define IFU_REG_ADPCM_DATA   (IFU_REG_BASE | 0x0A)
 #define IFU_REG_ADPCM_STATUS (IFU_REG_BASE | 0x0C)
 
+// Super CD registers
+#define SCD_REG_BASE         0x18C0
+#define SCD_REG_RAM_ENABLE   (SCD_REG_BASE)
+
 const char *str_adpcm_buffer  = "ADPCM Buffer";
 const char *str_backup_ram    = "Backup RAM";
 const char *str_ifu_registers = "IFU Registers";
-const char *str_work_ram      = "IFU Work RAM";
+const char *str_work_ram      = "CD System RAM";
 const char *str_spaces        = "                                ";
 
 /*
@@ -84,6 +88,9 @@ static int  ifu_full_offset = 0;
 static char ifu_full_wrote = 0;
 static char ifu_full_read = 0;
 static char ifu_full_temp = 0;
+static char scd_hucard_ram_detected = 0;
+static char scd_a = 0;
+static char scd_x = 0;
 
 /*
  * Assembly function to set the bank for page 3, the only one we can freely change in huc.
@@ -217,7 +224,7 @@ void ADPCMTest()
       SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
 
       set_font_pal(FONT_GREEN);
-      put_string(str_adpcm_buffer, 14, 6);
+      put_string(str_adpcm_buffer, 14, 7);
 
       if( ifu_full_test ) {
         put_string(str_spaces, 4, 10);
@@ -610,6 +617,16 @@ int RAMTestRegion(char bank, int offset, int length) {
   int i, pos = 0;
   char val,tmp = 0;
 
+  if( scd_hucard_ram_detected ) {
+    // Double check: do not allow this test to run if SCD RAM
+    return 0;
+  }
+  else {
+    // SCD RAM may not have been enabled yet, e.g. if SCD hardware was not detected.
+    // If the user has requested the test anyway, try to enable it now.
+    SCDRAM_Enable();
+  }
+
   set_page(bank);
   for( i = 0 ; i < RAM_TEST_VALUES ; i++ ) {
     for( ifu_full_offset = offset ; ifu_full_offset < offset + length ; ifu_full_offset++ ) {
@@ -629,17 +646,40 @@ int RAMTestRegion(char bank, int offset, int length) {
   return 1;
 }
 
+int SCDRAM_Detect()
+{
+  if( peek(0x18C5) == 0xAA && peek(0x18C6) == 0x55 ) {
+    scd_x = peek(0x18c7);
+    scd_a = peek(0xFFF4);
+    return 0;
+  }
+  else {
+    if( peek(0x18C1) == 0xAA && peek(0x18C2) == 0x55 ) {
+      scd_x = peek(0x18C3);
+      scd_a = peek(0xFFF4);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+void SCDRAM_Enable()
+{
+      // Enable on-board Super CD RAM.
+      poke(SCD_REG_RAM_ENABLE, 0xAA);
+      poke(SCD_REG_RAM_ENABLE, 0x55);
+}
+
 void IFUWorkRAMTest()
 {
   int i = 0;
   char y = 0;
-  char detected = 0;
   char test_sub_bank = 0;
   char test_sub_bank_pass = 0;
+  char scd = 0;
 
   sel = 0;
   redraw = 1;
-
 
   while(!end)
   {
@@ -657,21 +697,61 @@ void IFUWorkRAMTest()
       SetFontColors(FONT_GREEN, RGB(3, 3, 3), RGB(0, 7, 0), 0);
       SetFontColors(FONT_GREY,  RGB(3, 3, 3), RGB(5, 5, 5), 0);
 
+      set_font_pal(FONT_GREY);
+      put_string("$    :", 5, 9);
+      put_hex(SCD_REG_BASE, 4, 6, 9); 
+      for( i = 0 ; i < 8 ; i++ ) {
+        put_hex(peek(SCD_REG_BASE + i), 2, 12+(i*3), 9);
+      }
+
+      // Quick check: write and read back one byte from start of bank. If even one of
+      // these addresses responds, assume we have RAM on the HuCard and disable SCD
+      // RAM testing to prevent possible hardware conflicts.
       for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
-        y = 9 + i;
-        // Quick check/detection: write and read back one byte from start of bank.
-        detected = 0;
         set_page(ifu_wram_segments[i]);
         poke(PAGE_START, 0x55);
-        if( peek(PAGE_START) == 0x55 ) detected = 1;
+        if ( peek(PAGE_START) == 0x55 ) {
+          scd_hucard_ram_detected = 1;
+        }
+      }
 
-        if ( detected ) {
+      if( scd_hucard_ram_detected ) {
+        set_font_pal(FONT_WHITE);
+        put_string("SCD RAM detected on HuCard", 7, 18);
+        set_font_pal(FONT_RED);
+        put_string("Testing disabled", 12, 19);
+      }
+      else {
+        scd = SCDRAM_Detect();
+        if( scd ) {
+          SCDRAM_Enable();
+
+          // Write quick check values again, now SCD RAM is enabled.
+          for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
+            set_page(ifu_wram_segments[i]);
+            poke(PAGE_START, 0x55);
+          }
+        }
+      }
+
+      for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
+        y = 11 + i;
+
+        if ( peek(PAGE_START) == 0x55 ) {
           set_font_pal(FONT_GREEN);
           put_string("Detected", 27, y);
         }
         else {
-          set_font_pal(FONT_RED);
-          put_string("Not Found", 27, y);
+          if( scd && i > 0 ) {
+            // SCD registers suggest SCD RAM should be present, but write/read failed.
+            set_font_pal(FONT_RED);
+            put_string("Error", 27, y);
+          }
+          else {
+            // SCD registers suggest no SCD RAM, so write/read was expected to fail.
+            set_font_pal(FONT_GREY);
+            put_string("Not Found", 27, y);
+          }
         }
       }
     }
@@ -684,11 +764,11 @@ void IFUWorkRAMTest()
       put_string(str_work_ram, 14, 7);
 
       set_font_pal(FONT_WHITE);
-      put_string("Standard 64K:", 4, 9);
-      put_string("Extra 192K:", 4, 10);
+      put_string("Standard 64K:", 4, 11);
+      put_string("Extra 192K:", 6, 12);
 
       for( i = 0 ; i < IFU_WRAM_SEGMENTS ; i++ ) {
-        y = 9 + i;
+        y = 11 + i;
 
         if( ifu_full_test && i == sel ) {
           if( test_sub_bank == 0xff ) {
@@ -742,7 +822,7 @@ void IFUWorkRAMTest()
         }
         else {
           // No test running, or segment being tested is not selected.
-          if( i == sel ) {
+          if( !scd_hucard_ram_detected && i == sel ) {
             set_font_pal(FONT_WHITE);
           }
           else {
@@ -766,9 +846,12 @@ void IFUWorkRAMTest()
       controller = joytrg(0);
 
       if ( controller & JOY_RUN ) {
-        ifu_full_test = 1;
-        test_sub_bank = 0xff;
-        test_sub_bank_pass = 0;
+        if( !scd_hucard_ram_detected ) {
+          ifu_full_test = 1;
+          test_sub_bank = 0xff;
+          test_sub_bank_pass = 0;
+        }
+        // Still refresh, for visual feedback.
         refresh = 1;
       }
       else if( controller & JOY_UP ) {
@@ -889,7 +972,7 @@ void IFUTests()
     }
   }
 
-  set_page(0); // restore default value
+  //set_page(0); // restore default value
 
   end = 0;
   sel = 2;
