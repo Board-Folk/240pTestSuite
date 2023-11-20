@@ -649,15 +649,11 @@ int RAMTestRegion(char bank, int offset, int length) {
 int SCDRAM_Detect()
 {
   if( peek(0x18C5) == 0xAA && peek(0x18C6) == 0x55 ) {
-    // x = peek(0x18c7);
-    // a = peek(0xFFF4);
-    return 1;
+    return peek(0x18C7);
   }
   else {
     if( peek(0x18C1) == 0xAA && peek(0x18C2) == 0x55 ) {
-      // x = peek(0x18C3);
-      // a = peek(0xFFF4);
-      return 1;
+      return peek(0x18C3);
     }
   }
   return 0;
@@ -665,9 +661,9 @@ int SCDRAM_Detect()
 
 void SCDRAM_Enable()
 {
-      // Enable on-board Super CD RAM.
-      poke(SCD_REG_RAM_ENABLE, 0xAA);
-      poke(SCD_REG_RAM_ENABLE, 0x55);
+  // Enable on-board Super CD RAM.
+  poke(SCD_REG_RAM_ENABLE, 0xAA);
+  poke(SCD_REG_RAM_ENABLE, 0x55);
 }
 
 void IFUWorkRAMTest()
@@ -676,7 +672,7 @@ void IFUWorkRAMTest()
   char y = 0;
   char test_sub_bank = 0;
   char test_sub_bank_pass = 0;
-  char scd = 0;
+  char scd_ram_blocks = 0;
 
   sel = 0;
   redraw = 1;
@@ -722,8 +718,8 @@ void IFUWorkRAMTest()
         put_string("Testing disabled", 12, 19);
       }
       else {
-        scd = SCDRAM_Detect();
-        if( scd ) {
+        scd_ram_blocks = SCDRAM_Detect();
+        if( scd_ram_blocks ) {
           SCDRAM_Enable();
 
           // Write quick check values again, now SCD RAM is enabled.
@@ -743,7 +739,7 @@ void IFUWorkRAMTest()
           put_string("Detected", 27, y);
         }
         else {
-          if( scd && i > 0 ) {
+          if( scd_ram_blocks && i > 0 ) {
             // SCD registers suggest SCD RAM should be present, but write/read failed.
             set_font_pal(FONT_RED);
             put_string("Error", 27, y);
